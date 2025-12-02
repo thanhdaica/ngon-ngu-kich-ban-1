@@ -28,7 +28,7 @@ export function CartProvider({ children }) {
         return; 
       }
       try {
-        // SỬA: Thêm http://localhost:3000
+        // SỬA LỖI: Thêm domain http://localhost:3000
         const response = await axios.get('http://localhost:3000/api/cart', config);
         setCart(response.data);
       } catch (error) {
@@ -38,9 +38,9 @@ export function CartProvider({ children }) {
       }
     };
     fetchCart();
-  }, [user]); // Thêm user vào dependency để khi đăng nhập xong nó tự load lại
+  }, [user]);
 
-  // 2. Thêm vào giỏ hàng
+  // 2. Thêm vào giỏ
   const addToCart = async (productId, quantity) => {
     const config = getAuthConfig();
     if (!config) {
@@ -48,36 +48,36 @@ export function CartProvider({ children }) {
       return; 
     }
     try {
-      // SỬA: Thêm http://localhost:3000
+      // SỬA LỖI: Thêm domain
       const response = await axios.post('http://localhost:3000/api/cart', { productId, quantity }, config);
       setCart(response.data); 
       toast.success("Đã thêm vào giỏ hàng!");
     } catch (error) {
-      console.error(error);
       toast.error(error.response?.data?.message || "Lỗi khi thêm vào giỏ");
     }
   };
 
-  // 3. Cập nhật số lượng
+  // 3. Cập nhật số lượng (ĐÂY LÀ HÀM BẠN ĐANG BỊ LỖI)
   const updateQuantity = async (productId, newQuantity) => {
       const config = getAuthConfig();
       if (!config) return;
       if (newQuantity < 1) return;
       try {
-          // SỬA: Thêm http://localhost:3000
+          // SỬA LỖI: Thêm domain vào trước /api/cart
           const response = await axios.put('http://localhost:3000/api/cart', { productId, quantity: newQuantity }, config);
           setCart(response.data);
       } catch (error) {
+          console.error(error);
           toast.error("Không thể cập nhật số lượng.");
       }
   };
 
-  // 4. Xóa khỏi giỏ
+  // 4. Xóa sản phẩm
   const removeFromCart = async (productId) => {
     const config = getAuthConfig();
     if (!config) return; 
     try {
-      // SỬA: Thêm http://localhost:3000
+      // SỬA LỖI: Thêm domain
       const response = await axios.delete(`http://localhost:3000/api/cart/${productId}`, config);
       setCart(response.data); 
       toast.success("Đã xóa khỏi giỏ hàng.");
@@ -86,7 +86,7 @@ export function CartProvider({ children }) {
     }
   };
 
-  // 5. Xử lý thanh toán (Có hỗ trợ chọn sản phẩm selectedItemIds)
+  // 5. Tạo đơn hàng (Checkout)
   const handleCheckoutAPI = async (shippingAddress, paymentMethod, selectedItemIds) => {
     const config = getAuthConfig();
 
@@ -95,15 +95,13 @@ export function CartProvider({ children }) {
         return false;
     }
     
-    // Gửi danh sách sản phẩm được chọn lên server
     const checkoutData = { shippingAddress, paymentMethod, selectedItemIds };
 
     try {
-        // SỬA: Thêm http://localhost:3000
+        // SỬA LỖI: Thêm domain cho API order
         const response = await axios.post('http://localhost:3000/api/order', checkoutData, config);
         
-        // Sau khi tạo đơn, giỏ hàng ở server đã thay đổi (xóa món đã mua).
-        // Ta gọi lại API lấy giỏ hàng mới nhất để cập nhật UI ngay lập tức.
+        // SỬA LỖI: Thêm domain cho API cart khi load lại
         const newCartResponse = await axios.get('http://localhost:3000/api/cart', config);
         setCart(newCartResponse.data);
         

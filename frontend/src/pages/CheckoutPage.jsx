@@ -1,6 +1,6 @@
 // frontend/src/pages/CheckoutPage.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom'; // Import useLocation
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { toast } from 'sonner';
@@ -12,13 +12,13 @@ export default function CheckoutPage() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // 1. Lấy danh sách ID sản phẩm đã chọn từ trang Cart (truyền qua state)
+    // Lấy danh sách hàng đã chọn
     const selectedItems = location.state?.selectedItems || [];
 
     const [checkoutSuccess, setCheckoutSuccess] = useState(false);
     const [isRedirecting, setIsRedirecting] = useState(false);
     
-    // Bảo vệ: Nếu không có sản phẩm nào được chọn thì đá về trang giỏ hàng
+    // Logic bảo vệ (Redirect nếu chưa chọn hàng)
     useEffect(() => {
         if (checkoutSuccess || isRedirecting) return;
 
@@ -45,15 +45,13 @@ export default function CheckoutPage() {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    // --- TÍNH TOÁN GIÁ TIỀN (CHỈ CÁC MÓN ĐƯỢC CHỌN) ---
-    // Lọc ra các item trong giỏ hàng khớp với ID đã chọn để hiển thị
+    // Tính toán giá tiền (Chỉ các món được chọn)
     const checkoutItems = cart?.items?.filter(item => selectedItems.includes(item.product._id)) || [];
-    
     const itemsSubtotal = checkoutItems.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
     const shippingFee = 30000; 
     const finalTotal = itemsSubtotal + shippingFee;
 
-
+    // XỬ LÝ SUBMIT
     const handleSubmit = async (e) => {
         e.preventDefault();
         
@@ -71,12 +69,12 @@ export default function CheckoutPage() {
             phone: formData.phone,
         };
         
-        // TRUYỀN selectedItems VÀO API
+        // 1. Gọi API tạo đơn hàng (Hàm này nằm trong Context đã sửa ở trên)
         const orderData = await handleCheckoutAPI(shippingAddress, formData.paymentMethod, selectedItems);
         
         if(orderData) {
             const orderId = orderData.data._id;
-            const totalPrice = orderData.data.totalPrice; // Lấy tổng tiền từ response backend (để đảm bảo chính xác)
+            const totalPrice = orderData.data.totalPrice;
             
             if (formData.paymentMethod === 'COD') {
                 setCheckoutSuccess(true);
@@ -87,8 +85,8 @@ export default function CheckoutPage() {
                     const token = localStorage.getItem('token');
                     const config = { headers: { 'Authorization': `Bearer ${token}` } };
                     
-                    // Gọi API tạo link VNPay
-                    const response = await axios.post('/api/payment/vnpay_create', {
+                    // SỬA: Thêm http://localhost:3000 vào đây
+                    const response = await axios.post('http://localhost:3000/api/payment/vnpay_create', {
                         orderId: orderId,
                         amount: totalPrice,
                         bankCode: '' 
@@ -118,7 +116,7 @@ export default function CheckoutPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 
-                {/* Cột 1: FORM THÔNG TIN */}
+                {/* Cột 1: Form nhập liệu */}
                 <div className="md:col-span-2 bg-white shadow-lg rounded-xl p-6">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <h2 className="text-xl font-semibold border-b pb-2">Địa chỉ nhận hàng</h2>
@@ -149,11 +147,9 @@ export default function CheckoutPage() {
                     </form>
                 </div>
                 
-                {/* Cột 2: TÓM TẮT ĐƠN HÀNG */}
+                {/* Cột 2: Tóm tắt */}
                 <div className="md:col-span-1 bg-white shadow-lg rounded-xl p-6 h-fit">
                     <h2 className="text-2xl font-bold mb-4">Tóm tắt Đơn hàng</h2>
-                    
-                    {/* Danh sách sản phẩm (Thu gọn) */}
                     <div className="max-h-60 overflow-y-auto mb-4 border-b pb-2">
                         {checkoutItems.map(item => (
                             <div key={item.product._id} className="flex justify-between text-sm mb-2">
@@ -162,25 +158,19 @@ export default function CheckoutPage() {
                             </div>
                         ))}
                     </div>
-
                     <div className="flex justify-between mb-2">
                         <span className="text-gray-600">Tiền hàng:</span>
                         <span className="font-medium">{itemsSubtotal.toLocaleString('vi-VN')}đ</span>
                     </div>
-
                     <div className="flex justify-between mb-2 border-b pb-2">
                         <span className="text-gray-600">Phí vận chuyển:</span>
                         <span className="font-medium text-green-600">{shippingFee.toLocaleString('vi-VN')}đ</span>
                     </div>
-
                     <div className="flex justify-between text-2xl font-extrabold mt-4">
                         <span>Tổng thanh toán:</span>
-                        <span className="text-red-600">
-                             {finalTotal.toLocaleString('vi-VN')}đ
-                        </span>
+                        <span className="text-red-600">{finalTotal.toLocaleString('vi-VN')}đ</span>
                     </div>
                 </div>
-
             </div>
         </div>
     );
