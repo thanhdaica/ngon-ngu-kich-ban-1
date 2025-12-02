@@ -1,11 +1,9 @@
-// backend/controllers/paymentController.js
 import Order from '../model/Order.js';
 import crypto from 'crypto';
 import 'dotenv/config';
-import querystring from 'qs'; 
+import querystring from 'qs';
 import dateFormat from 'dateformat';
 
-// Hàm sắp xếp tham số (Bắt buộc theo chuẩn VNPay)
 function sortObject(obj) {
     let sorted = {};
     let str = [];
@@ -55,7 +53,7 @@ class PaymentController {
             vnp_Params['vnp_TxnRef'] = orderIdInfo;
             vnp_Params['vnp_OrderInfo'] = 'Thanh toan don hang:' + orderIdInfo;
             vnp_Params['vnp_OrderType'] = 'other';
-            vnp_Params['vnp_Amount'] = amount * 100; // VNPay tính đơn vị là đồng (nhân 100)
+            vnp_Params['vnp_Amount'] = amount * 100; 
             vnp_Params['vnp_ReturnUrl'] = returnUrl;
             vnp_Params['vnp_IpAddr'] = ipAddr;
             vnp_Params['vnp_CreateDate'] = createDate;
@@ -81,7 +79,7 @@ class PaymentController {
         }
     }
 
-    // 2. XỬ LÝ KẾT QUẢ TRẢ VỀ (IPN/RETURN)
+    // 2. XỬ LÝ KẾT QUẢ TRẢ VỀ (QUAN TRỌNG: ĐÃ SỬA ĐỂ CẬP NHẬT STATUS)
     async vnpayReturn(req, res) {
         let vnp_Params = req.query;
         let secureHash = vnp_Params['vnp_SecureHash'];
@@ -108,6 +106,7 @@ class PaymentController {
                     isPaid: true,
                     paidAt: new Date(),
                     paymentMethod: 'VNPAY',
+                    status: 'Processing', // <--- ĐÃ THÊM: Chuyển trạng thái sang Đang xử lý
                     paymentResult: { 
                         id: vnp_Params['vnp_TransactionNo'], 
                         status: 'SUCCESS', 
@@ -116,6 +115,7 @@ class PaymentController {
                 });
                 res.status(200).json({ message: 'Giao dịch thành công', code: '00' });
             } else {
+                // Giao dịch thất bại thì giữ nguyên Pending hoặc có thể chuyển sang Cancelled nếu muốn
                 res.status(400).json({ message: 'Giao dịch thất bại', code: rspCode });
             }
         } else {
