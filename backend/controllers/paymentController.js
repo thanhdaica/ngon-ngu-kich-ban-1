@@ -1,106 +1,126 @@
+// backend/controllers/paymentController.js
 import Order from '../model/Order.js';
 import crypto from 'crypto';
-import axios from 'axios';
-import 'dotenv/config'; 
-// import mongoose from 'mongoose'; // <== ĐÃ XÓA (Không cần thiết)
+import 'dotenv/config';
+import querystring from 'qs'; 
+import dateFormat from 'dateformat';
 
-// Hàm sắp xếp (Giữ nguyên)
+// Hàm sắp xếp tham số (Bắt buộc theo chuẩn VNPay)
 function sortObject(obj) {
     let sorted = {};
-    let keys = Object.keys(obj).sort();
-    for (let key of keys) {
-        if (obj[key] !== undefined && obj[key] !== null) {
-            sorted[key] = obj[key];
+    let str = [];
+    let key;
+    for (key in obj) {
+        if (obj.hasOwnProperty(key)) {
+            str.push(encodeURIComponent(key));
         }
+    }
+    str.sort();
+    for (key = 0; key < str.length; key++) {
+        sorted[str[key]] = encodeURIComponent(obj[str[key]]).replace(/%20/g, "+");
     }
     return sorted;
 }
 
 class PaymentController {
 
-    async createMomoPayment(req, res) {
-        const userId = req.user._id; 
-        const { orderId, amount, extraData = '' } = req.body;
-        
+    // 1. TẠO URL THANH TOÁN VNPAY
+    async createVnPayPayment(req, res) {
         try {
-            // 1. Kiểm tra Order
-            const order = await Order.findById(orderId);
-            if (!order || order.user.toString() !== userId.toString()) {
-                return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc không phải của bạn' });
+            const { orderId, amount, bankCode, language } = req.body;
+            
+            let ipAddr = req.headers['x-forwarded-for'] ||
+                req.connection.remoteAddress ||
+                req.socket.remoteAddress ||
+                req.connection.socket.remoteAddress;
+
+            const tmnCode = process.env.VNP_TMN_CODE;
+            const secretKey = process.env.VNP_HASH_SECRET;
+            let vnpUrl = process.env.VNP_URL;
+            const returnUrl = process.env.VNP_RETURN_URL;
+
+            let date = new Date();
+            let createDate = dateFormat(date, 'yyyymmddHHMMss');
+            let orderIdInfo = orderId; 
+
+            let locale = language || 'vn';
+            let currCode = 'VND';
+            
+            let vnp_Params = {};
+            vnp_Params['vnp_Version'] = '2.1.0';
+            vnp_Params['vnp_Command'] = 'pay';
+            vnp_Params['vnp_TmnCode'] = tmnCode;
+            vnp_Params['vnp_Locale'] = locale;
+            vnp_Params['vnp_CurrCode'] = currCode;
+            vnp_Params['vnp_TxnRef'] = orderIdInfo;
+            vnp_Params['vnp_OrderInfo'] = 'Thanh toan don hang:' + orderIdInfo;
+            vnp_Params['vnp_OrderType'] = 'other';
+            vnp_Params['vnp_Amount'] = amount * 100; // VNPay tính đơn vị là đồng (nhân 100)
+            vnp_Params['vnp_ReturnUrl'] = returnUrl;
+            vnp_Params['vnp_IpAddr'] = ipAddr;
+            vnp_Params['vnp_CreateDate'] = createDate;
+
+            if(bankCode && bankCode !== "") {
+                vnp_Params['vnp_BankCode'] = bankCode;
             }
 
-            // 2. Chuẩn bị tham số VÀ ĐẢM BẢO KHÓA SẠCH (FIX LỖI TRIMS)
-            const partnerCode = process.env.MOMO_PARTNER_CODE?.trim(); // <== THÊM .trim()
-            const accessKey = process.env.MOMO_ACCESS_KEY?.trim();   // <== THÊM .trim()
-            const secretKey = process.env.MOMO_SECRET_KEY?.trim();     // <== THÊM .trim()
-            
-            // <== KIỂM TRA KHÓA BÍ MẬT ĐỂ TRÁNH CRASH ==>
-            if (!secretKey || !partnerCode || !accessKey) {
-                 console.error('❌ LỖI CẤU HÌNH: Khóa MoMo bị thiếu hoặc chưa load.');
-                 return res.status(500).json({ message: 'Lỗi cấu hình Backend: Khóa MoMo (Partner/Secret Key) bị thiếu.' });
-            }
-            // <=======================================>
-            
-            const amountInteger = Math.round(amount); 
-            const requestId = orderId; 
-            const orderInfo = `Thanh toan don hang ${orderId.substring(0, 8)}`;
-            const requestType = 'payWithMethod';
-            
-            // --- 3. TẠO CHUỖI KÝ (SIGNATURE) ---
-            let signatureParams = {
-                accessKey: accessKey,
-                amount: amountInteger,
-                orderId: orderId,
-                orderInfo: orderInfo,
-                partnerCode: partnerCode,
-                redirectUrl: `http://localhost:5173/payment-status/${orderId}`, 
-                ipnUrl: process.env.MOMO_IPN_URL,
-                requestId: requestId,
-                requestType: requestType,
-                extraData: extraData,
-            };
+            vnp_Params = sortObject(vnp_Params);
 
-            signatureParams = sortObject(signatureParams);
-
-            const rawSignature = 
-                Object.keys(signatureParams).map(key => `${key}=${signatureParams[key]}`).join('&');
-
-            // Tạo chữ ký SHA256
-            const signature = crypto.createHmac('sha256', secretKey)
-                                    .update(rawSignature)
-                                    .digest('hex');
-
-            // --- 4. GỌI MOMO API ---
-            const requestBody = {
-                ...signatureParams, 
-                lang: 'vi', 
-                signature: signature, 
-            };
+            let signData = querystring.stringify(vnp_Params, { encode: false });
+            let hmac = crypto.createHmac("sha512", secretKey);
+            let signed = hmac.update(new Buffer.from(signData, 'utf-8')).digest("hex"); 
             
-            const momoResponse = await axios.post(process.env.MOMO_API_URL, requestBody);
-            
-            if (momoResponse.data && momoResponse.data.payUrl) {
-                res.status(200).json({ 
-                    payUrl: momoResponse.data.payUrl,
-                    qrCodeUrl: momoResponse.data.qrCodeUrl 
-                });
-            } else {
-                // MoMo Response trả về lỗi 400
-                console.error('MoMo Response Error:', momoResponse.data);
-                res.status(400).json({ message: 'Lỗi từ cổng MoMo', details: momoResponse.data });
-            }
+            vnp_Params['vnp_SecureHash'] = signed;
+            vnpUrl += '?' + querystring.stringify(vnp_Params, { encode: false });
+
+            res.status(200).json({ paymentUrl: vnpUrl });
 
         } catch (error) {
-            // Bắt lỗi hệ thống (như lỗi không thể kết nối hoặc crash)
-            console.error('❌ Lỗi tạo thanh toán MoMo (Backend Catch):', error.message);
-            res.status(500).json({ message: 'Lỗi server không xác định khi gọi MoMo API', error: error.message });
+            console.error("Lỗi tạo VNPay URL:", error);
+            res.status(500).json({ message: "Lỗi tạo thanh toán VNPay" });
         }
     }
-    /**
-     * [POST] /api/payment/momo_ipn (Giữ nguyên)
-     */
-    async momoIPN(req, res) {
-        // ... (phần còn lại giữ nguyên) ...
+
+    // 2. XỬ LÝ KẾT QUẢ TRẢ VỀ (IPN/RETURN)
+    async vnpayReturn(req, res) {
+        let vnp_Params = req.query;
+        let secureHash = vnp_Params['vnp_SecureHash'];
+
+        delete vnp_Params['vnp_SecureHash'];
+        delete vnp_Params['vnp_SecureHashType'];
+
+        vnp_Params = sortObject(vnp_Params);
+
+        let secretKey = process.env.VNP_HASH_SECRET;
+
+        let signData = querystring.stringify(vnp_Params, { encode: false });
+        let hmac = crypto.createHmac("sha512", secretKey);
+        let signed = hmac.update(new Buffer.from(signData, 'utf-8')).digest("hex");
+
+        if(secureHash === signed){
+            // Checksum hợp lệ
+            const orderId = vnp_Params['vnp_TxnRef'];
+            const rspCode = vnp_Params['vnp_ResponseCode'];
+
+            // Mã 00 là thành công
+            if(rspCode === '00') {
+                 await Order.findByIdAndUpdate(orderId, {
+                    isPaid: true,
+                    paidAt: new Date(),
+                    paymentMethod: 'VNPAY',
+                    paymentResult: { 
+                        id: vnp_Params['vnp_TransactionNo'], 
+                        status: 'SUCCESS', 
+                        update_time: vnp_Params['vnp_PayDate'] 
+                    }
+                });
+                res.status(200).json({ message: 'Giao dịch thành công', code: '00' });
+            } else {
+                res.status(400).json({ message: 'Giao dịch thất bại', code: rspCode });
+            }
+        } else {
+            res.status(400).json({ message: 'Chữ ký không hợp lệ', code: '97' });
+        }
     }
 }
 
