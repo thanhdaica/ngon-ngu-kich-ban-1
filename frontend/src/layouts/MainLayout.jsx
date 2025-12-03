@@ -6,25 +6,22 @@ import Footer from '../components/Footer';
 
 const MainLayout = () => {
   return (
-    <div className="min-h-screen w-full relative bg-white">
-  {/* Teal Glow Left */}
-  <div
-    className="absolute inset-0 z-0"
-    style={{
-      background: "#ffffff",
-      backgroundImage: `
-        radial-gradient(
-          circle at top left,
-          rgba(56, 193, 182, 0.5),
-          transparent 70%
-        )
-      `,
-      filter: "blur(80px)",
-      backgroundRepeat: "no-repeat",
-    }}
-  />
-     {/* Your Content/Components */}
-     <div className="flex flex-col min-h-screen relative z-10">
+    <div className="min-h-screen w-full bg-white relative">
+{/* Magenta Orb Grid Background */}
+<div
+ className="absolute inset-0 z-0"
+ style={{
+   background: "white",
+   backgroundImage: `
+     linear-gradient(to right, rgba(71,85,105,0.15) 1px, transparent 1px),
+     linear-gradient(to bottom, rgba(71,85,105,0.15) 1px, transparent 1px),
+     radial-gradient(circle at 50% 60%, rgba(236,72,153,0.15) 0%, rgba(168,85,247,0.05) 40%, transparent 70%)
+   `,
+   backgroundSize: "40px 40px, 40px 40px, 100% 100%",
+ }}
+/>
+  {/* Your Content/Components */}
+  <div className="flex flex-col min-h-screen relative z-10">
       <HeaderBar />
       <main className="flex-grow">
         {/* React Router sẽ tự động "nhét" 
@@ -35,8 +32,6 @@ const MainLayout = () => {
       <Footer />
     </div>
 </div>
-
-    
   );
 };
 export default MainLayout;
